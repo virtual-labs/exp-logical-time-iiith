@@ -32,9 +32,6 @@ const pinboard = document.getElementById("pinboard");
 const modechange = document.getElementById("mode");
 // Changing modes
 
-const checkanswers = document.getElementById("check");
-// Checking answers on click
-
 const checkanswerswrap = document.getElementById("wrapper");
 // Wraps around button for display purposes
 
@@ -172,6 +169,9 @@ const inmax = 5;
 const indefault = 1;
 // Ticking of processes, min, max
 
+let current_max_z = 0;
+// Helps move selected event tips to the front
+
 // Function is used to determine whether the current width can hold all events. Empirically determined
 function mysteryAdjustment(curwidth, vw, max_events_offset) {
     return curwidth - 13 - 10 * vw >= max_events_offset;
@@ -215,6 +215,7 @@ function updateEventTimes(testing = false) {
     const cycleDetect = computeScalar(events, messages, ticks, event_time, causal_chain);
     if(!cycleDetect) {
         let i = events.length - 1;
+        current_max_z = events.length;
         while(i >= 0) {
             const ID_FORMAT = events[i].p.toString() + '-' + events[i].t.toString() + '-tip';
             // Format of event tool tip
@@ -267,6 +268,12 @@ function updateEventTimes(testing = false) {
                 eventtip.appendChild(toadd);
                 eventtip.appendChild(toadd8);
                 eventtip.appendChild(toadd4);
+                eventtip.parentNode.style.zIndex = String(events.length - i);
+                eventtip.addEventListener("click", (event) => {
+                    event.stopPropagation();
+                    current_max_z++;
+                    eventtip.parentNode.style.zIndex = String(current_max_z);
+                }, true);
                 const dims = eventtip.getBoundingClientRect();
                 const dims2 = eventtip.parentNode.getBoundingClientRect();
                 eventtip.style.left = String(- dims.width / 2 + dims2.width / 3) + 'px';
@@ -818,8 +825,12 @@ async function showCyclePopup() {
 // Creation of message ended in a point inside simspace
 function finishDragMessageVisual(event) {
     if((!ticking) && messagestate === 1) {
-        if(event.target.className === "slider-bone" || event.target.className === "event" || event.target.className === "check-label") {
-            if (fromMessage === event.target || fromMessage.contains(event.target)) {
+        console.log(event.target.className);
+        if(event.target.className === "slider-bone" || event.target.className === "event" || event.target.className === "check-label"
+            || event.target.className === "event-tip"
+        ) {
+            if (fromMessage === event.target || fromMessage.contains(event.target) 
+                    || fromMessage.querySelector(".event-tip") === event.target) {
                 messagespace.removeChild(currentMessage);
                 updateEventTimes();
                 currentMessage = null;
@@ -913,7 +924,6 @@ function createNode(genMode, defaultval=indefault) {
         const toadd4 = document.createElement("div");
         toadd4.className = "slider-bone";
         toadd4.dataset.process = node_len;
-        //toadd4.addEventListener("click", manageEventVisual);
         toadd3.appendChild(toadd4);
         // Adding straight line representing timeline
         
@@ -1181,10 +1191,12 @@ async function generator(event) {
     const process_number = parseInt(document.getElementById("processors-gen").value);
     const event_number = parseInt(document.getElementById("events-gen").value);
     const messages_number = parseInt(document.getElementById("messages-gen").value);
-    const event_padding = 100;
+    const tell_width = tellspace.getBoundingClientRect().width;
+    const event_padding = tell_width / 14.2;
+    console.log(event_padding);
     const event_offset = [];
     for(let i = 0; i < process_number; ++i) {
-        event_offset.push(20 + Math.random() * 150);
+        event_offset.push(event_padding / 2 + Math.random() * event_padding);
     }
     const message_set = new Set();
     let max_ticks = 1;
@@ -1205,11 +1217,14 @@ async function generator(event) {
     for(let i = 0; i < process_number; ++i) {
         sliderBones.push(createNodeMode(outed.tic[i]));
     }
+    let max_time = 0;
     for(const eve of outed.eve) {
         if(!message_set.has(eve)) {
             createEventVisual(sliderBones[eve.p], event_offset[eve.p] + eve.t, true, true);
         }
+        max_time = (max_time > event_offset[eve.p] + eve.t) ? max_time : (event_offset[eve.p] + eve.t);
     }
+    simspace.width = String(max_time + 5 * event_padding) + 'px';
     const throttler = new Semaphore(1);
     const all_at_once = function(sliderBones, simspace, e1, e2, event_offset, process_number) {
         createMessageViusalGraphics(sliderBones[e1.p], simspace, event_offset[e1.p] + e1.t, true);
@@ -1221,7 +1236,6 @@ async function generator(event) {
         const e2 = mes.e2;
         all_at_once(sliderBones, simspace, e1, e2, event_offset, process_number);
         throttler.release();
-        //throttler.callFunction(all_at_once, sliderBones, simspace, e1, e2, event_offset, process_number);
     }
     updateEventTimes(true);
 }
@@ -1240,8 +1254,6 @@ function checkLogic() {
         const useranswer = tip.querySelector("input[type=number].enquirer");
         const correctanswer = tip.querySelector("span.answerer");
         const flipper = tip.querySelector("div.flipper");
-        console.log(useranswer.value);
-        console.log(correctanswer.textContent);
         if(parseInt(useranswer.value) === parseInt(correctanswer.textContent)) {
             correctanswer.classList.add("correct");
         }
@@ -1250,8 +1262,11 @@ function checkLogic() {
             wrong = true;
         }
         flipper.classList.add("answered");
+        const dims = tip.getBoundingClientRect();
+        const dims2 = tip.parentNode.getBoundingClientRect();
+        tip.style.left = String(- dims.width / 2 + dims2.width / 3) + 'px';
     }
-    if(!wrong) {
+    if(!wrong && test_progress < 2) {
         speed.classList.toggle("clickable");
     }
 }
